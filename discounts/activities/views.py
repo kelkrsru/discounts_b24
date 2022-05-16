@@ -268,6 +268,8 @@ def calculation(request):
     logger.addHandler(handler)
     # Запуск приложения
     logger.info(MESSAGES_FOR_LOG['start_app'])
+    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                               'Начальные данные'))
     if request.method != 'POST':
         logger.error(MESSAGES_FOR_LOG['request_not_post'])
         logger.info(MESSAGES_FOR_LOG['stop_app'])
@@ -369,7 +371,10 @@ def calculation(request):
                         MESSAGES_FOR_BP['impossible_get_company_type'])
         return
     discounts = dict()  # Основной словарь скидок по номенклатуре
+    logger.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Скидки для Партнеров#############################
+    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                               'Скидки для партнеров'))
     if settings_portal.is_active_partner:
         # Получим все элементы смарт процесса Скидки для партнеров
         try:
@@ -415,7 +420,10 @@ def calculation(request):
             json.dumps(discounts, indent=2, ensure_ascii=False)))
     else:
         logger.info(MESSAGES_FOR_LOG['partner_off'])
+    logger.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Разовая от суммы счета############################
+    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                               'Разовая от суммы счета'))
     if settings_portal.is_active_sum_invoice:
         # Получим все элементы смарт процесса Скидки для партнеров
         try:
@@ -470,7 +478,10 @@ def calculation(request):
             json.dumps(discounts, indent=2, ensure_ascii=False)))
     else:
         logger.info(MESSAGES_FOR_LOG['sum_invoice_off'])
+    logger.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Накопительная#############################
+    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                               'Накопительная скидка'))
     if settings_portal.is_active_accumulative:
         # Получим все элементы смарт процесса Накопительная скидка
         try:
@@ -557,7 +568,10 @@ def calculation(request):
             json.dumps(discounts, indent=2, ensure_ascii=False)))
     else:
         logger.info(MESSAGES_FOR_LOG['accumulative_off'])
+    logger.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Скидки на товар#############################
+    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                               'Скидки на конкретный товар'))
     all_discounts_products = dict()
     if settings_portal.is_active_discount_product:
         # Получим все элементы смарт процесса Скидки на товар
@@ -575,10 +589,26 @@ def calculation(request):
             MESSAGES_FOR_LOG['get_elements_discounts_product'],
             json.dumps(discounts_product.elements, indent=2,
                        ensure_ascii=False)))
+        # Перебор всех элементов смарт процесса Скидки на товар
         for element in discounts_product.elements:
+            logger.info('{} {}'.format(
+                MESSAGES_FOR_LOG['algorithm_for_smart'],
+                element['title']
+            ))
+            # Проверяем id компании в элементе смарт процесса и сделке
+            smart_company_id = element['companyId']
+            # Проверяем совпадает ли id_company сделки и элемента
+            if smart_company_id != company.id:
+                logger.info(
+                    MESSAGES_FOR_LOG['company_deal_not_company_smart'].format(
+                        smart_company_id, company.id
+                    ))
+                continue
+            # Получаем все товары элемента смарт процесса
             discounts_product.get_all_products(
                 settings_portal.code_smart_process_discount_product,
                 element['id'])
+            # Формируем словарь всех скидок на продукт
             for product in discounts_product.products:
                 all_discounts_products[product['productId']] = element[
                     settings_portal.code_discount_smart_discount_product]
@@ -588,7 +618,10 @@ def calculation(request):
                        ensure_ascii=False)))
     else:
         logger.info(MESSAGES_FOR_LOG['discount_product_off'])
+    logger.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Применяем скидки#############################
+    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                               'Применение скидок'))
     for product in deal.products:
         nomenclature_group_id = product['nomenclature_group_id']
         price_acc = decimal.Decimal(product['PRICE_ACCOUNT'])
@@ -601,6 +634,7 @@ def calculation(request):
                         'nomenclature_group_id']
         for key in keys_for_del:
             del product[key]
+        # Применяем скидки по номенклатурным группам
         if nomenclature_group_id in discounts:
             discount_rate = discounts[nomenclature_group_id]
             product['DISCOUNT_RATE'] = discount_rate
@@ -611,18 +645,19 @@ def calculation(request):
             ))
         else:
             product['DISCOUNT_RATE'] = 0
+        # Применяем скидки на конкретный товар
         if settings_portal.is_active_discount_product:
             if product_id not in all_discounts_products:
                 logger.info(MESSAGES_FOR_LOG['no_discount_one_product'].format(
                     product_id
                 ))
                 continue
-            if product['DISCOUNT_RATE'] >= all_discounts_products[product_id]:
-                logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
-                    product['DISCOUNT_RATE'],
-                    all_discounts_products[product_id]
-                ))
-                continue
+            # if product['DISCOUNT_RATE'] >= all_discounts_products[product_id]:
+            #     logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
+            #         product['DISCOUNT_RATE'],
+            #         all_discounts_products[product_id]
+            #     ))
+            #     continue
             discount_rate = all_discounts_products[product_id]
             product['DISCOUNT_RATE'] = discount_rate
             price = price_brutto * (100 - discount_rate) / 100
@@ -646,6 +681,7 @@ def calculation(request):
     # Возвращаем результат
     response_for_bp(portal, initial_data['event_token'],
                     MESSAGES_FOR_BP['calculation_ok'])
+    logger.info(MESSAGES_FOR_LOG['stop_block'])
     logger.info(MESSAGES_FOR_LOG['stop_app'])
 
 

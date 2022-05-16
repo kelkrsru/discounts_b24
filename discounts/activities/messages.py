@@ -29,6 +29,8 @@ MESSAGES_FOR_LOG = {
         delimiter='-' * 15),
     'stop_app': '{delimiter}Завершение приложения{delimiter}\n'.format(
         delimiter='-' * 15),
+    'start_block': 'Старт блока:',
+    'stop_block': 'Стоп блока\n',
     'get_products': 'Полученные товары:\n',
     'get_nomenclature_groups': 'Полученные номенклатурные группы и суммы:\n',
     'get_elements_discounts_partners': 'Полученные элементы смарт процесса '
