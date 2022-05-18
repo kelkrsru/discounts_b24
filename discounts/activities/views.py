@@ -391,8 +391,8 @@ def calculation(request):
             MESSAGES_FOR_LOG['get_elements_discounts_partners'],
             json.dumps(discounts_dealer.elements, indent=2, ensure_ascii=False)
         ))
-        # Проверяем есть ли нужный тип компании = типу компании сделки
         for element in discounts_dealer.elements:
+            # Проверяем есть ли нужный тип компании = типу компании сделки
             if (company.type ==
                     element[settings_portal.code_company_type_smart_partner]):
                 logger.info(MESSAGES_FOR_LOG['type_company_in_smart'].format(
