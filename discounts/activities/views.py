@@ -392,6 +392,18 @@ def calculation(request):
             json.dumps(discounts_dealer.elements, indent=2, ensure_ascii=False)
         ))
         for element in discounts_dealer.elements:
+            # Проверяем входные данные элементов смарт процесса
+            if (not element[settings_portal.code_discount_smart_partner]
+                    or not element[
+                        settings_portal.code_company_type_smart_partner]
+                    or not element[
+                        settings_portal.code_nomenclature_group_id_smart_partner]
+            ):
+                logger.error(
+                    MESSAGES_FOR_LOG['wrong_input_data_smart'].format(
+                        element['title'], discounts_dealer.id
+                    ))
+                continue
             # Проверяем есть ли нужный тип компании = типу компании сделки
             if (company.type ==
                     element[settings_portal.code_company_type_smart_partner]):
@@ -402,7 +414,8 @@ def calculation(request):
                     settings_portal.code_nomenclature_group_id_smart_partner]
                 if nomenclature_group_id not in nomenclatures_groups:
                     logger.info('{} {}'.format(
-                        MESSAGES_FOR_LOG['no_discount_no_nomenclature_group_id'],
+                        MESSAGES_FOR_LOG[
+                            'no_discount_no_nomenclature_group_id'],
                         nomenclature_group_id))
                     continue
                 discounts[nomenclature_group_id] = int(
@@ -410,7 +423,7 @@ def calculation(request):
                 logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
                     nomenclature_group_id,
                     discounts[nomenclature_group_id])
-                            )
+                )
             else:
                 logger.info('Тип компании {}. НЕ найден в элементе {}'.format(
                     company.type, element['title']
@@ -434,13 +447,24 @@ def calculation(request):
             logger.error(MESSAGES_FOR_LOG['impossible_get_smart_sum_invoice'])
             logger.info(MESSAGES_FOR_LOG['stop_app'])
             response_for_bp(portal, initial_data['event_token'],
-                            MESSAGES_FOR_BP['impossible_get_smart_sum_invoice'])
+                            MESSAGES_FOR_BP[
+                                'impossible_get_smart_sum_invoice'])
             return
         logger.debug('{}{}'.format(
             MESSAGES_FOR_LOG['get_elements_sum_invoice'],
             json.dumps(discounts_sum_invoice.elements, indent=2,
                        ensure_ascii=False)))
         for element in discounts_sum_invoice.elements:
+            # Проверяем входные данные элементов смарт процесса
+            if (not element[settings_portal.code_discount_smart_sum_invoice]
+                    or not element[
+                        settings_portal.code_nomenclature_group_id_sum_invoice]
+            ):
+                logger.error(
+                    MESSAGES_FOR_LOG['wrong_input_data_smart'].format(
+                        element['title'], discounts_sum_invoice.id
+                    ))
+                continue
             logger.info('{} {}'.format(
                 MESSAGES_FOR_LOG['algorithm_for_smart'],
                 element['title']))
@@ -462,7 +486,8 @@ def calculation(request):
             # Выясняем какая скидка больше
             if (nomenclature_group_id in discounts and
                     (discounts[nomenclature_group_id]
-                     >= element[settings_portal.code_discount_smart_sum_invoice])):
+                     >= element[
+                         settings_portal.code_discount_smart_sum_invoice])):
                 logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
                     discounts[nomenclature_group_id],
                     element[settings_portal.code_discount_smart_sum_invoice]))
@@ -492,13 +517,29 @@ def calculation(request):
             logger.error(MESSAGES_FOR_LOG['impossible_get_smart_accumulative'])
             logger.info(MESSAGES_FOR_LOG['stop_app'])
             response_for_bp(portal, initial_data['event_token'],
-                            MESSAGES_FOR_BP['impossible_get_smart_accumulative'])
+                            MESSAGES_FOR_BP[
+                                'impossible_get_smart_accumulative'])
             return
         logger.debug('{}{}'.format(
             MESSAGES_FOR_LOG['get_elements_accumulative'],
             json.dumps(discounts_accumulative.elements, indent=2,
                        ensure_ascii=False)))
         for element in discounts_accumulative.elements:
+            # Проверяем входные данные элементов смарт процесса
+            if (not element[
+                settings_portal.code_nomenclature_group_accumulative]
+                    or not element[settings_portal.code_upper_one_accumulative]
+                    or not element[
+                        settings_portal.code_discount_upper_one_accumulative]
+                    or not element[settings_portal.code_upper_two_accumulative]
+                    or not element[
+                        settings_portal.code_discount_upper_two_accumulative]
+            ):
+                logger.error(
+                    MESSAGES_FOR_LOG['wrong_input_data_smart'].format(
+                        element['title'], discounts_accumulative.id
+                    ))
+                continue
             company_id = element['companyId']
             nomenclature_group_id = element[
                 settings_portal.code_nomenclature_group_accumulative]
@@ -533,13 +574,16 @@ def calculation(request):
             if (volume_nomenclature_group.volume
                     >= decimal.Decimal(
                         element[settings_portal.code_upper_two_accumulative])):
-                if (nomenclature_group_id in discounts and (discounts[nomenclature_group_id]
-                        >= element[settings_portal.code_discount_upper_two_accumulative])):
-                    logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
-                        discounts[nomenclature_group_id],
-                        element[
-                            settings_portal.code_discount_upper_two_accumulative]
-                    ))
+                if (nomenclature_group_id in discounts and (
+                        discounts[nomenclature_group_id]
+                        >= element[
+                            settings_portal.code_discount_upper_two_accumulative])):
+                    logger.info(
+                        MESSAGES_FOR_LOG['no_discount_previous'].format(
+                            discounts[nomenclature_group_id],
+                            element[
+                                settings_portal.code_discount_upper_two_accumulative]
+                        ))
                     continue
                 discounts[nomenclature_group_id] = element[
                     settings_portal.code_discount_upper_two_accumulative]
@@ -548,8 +592,10 @@ def calculation(request):
                     element[
                         settings_portal.code_discount_upper_two_accumulative]
                 ))
-            if (nomenclature_group_id in discounts and (discounts[nomenclature_group_id]
-                    >= element[settings_portal.code_discount_upper_one_accumulative])):
+            if (nomenclature_group_id in discounts and (
+                    discounts[nomenclature_group_id]
+                    >= element[
+                        settings_portal.code_discount_upper_one_accumulative])):
                 logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
                     discounts[nomenclature_group_id],
                     element[
@@ -583,7 +629,8 @@ def calculation(request):
             logger.error(MESSAGES_FOR_LOG['impossible_get_smart_one_product'])
             logger.info(MESSAGES_FOR_LOG['stop_app'])
             response_for_bp(portal, initial_data['event_token'],
-                            MESSAGES_FOR_BP['impossible_get_smart_one_product'])
+                            MESSAGES_FOR_BP[
+                                'impossible_get_smart_one_product'])
             return
         logger.debug('{}{}'.format(
             MESSAGES_FOR_LOG['get_elements_discounts_product'],
@@ -591,6 +638,14 @@ def calculation(request):
                        ensure_ascii=False)))
         # Перебор всех элементов смарт процесса Скидки на товар
         for element in discounts_product.elements:
+            # Проверяем входные данные элементов смарт процесса
+            if (not element[
+                settings_portal.code_discount_smart_discount_product]):
+                logger.error(
+                    MESSAGES_FOR_LOG['wrong_input_data_smart'].format(
+                        element['title'], discounts_product.id
+                    ))
+                continue
             logger.info('{} {}'.format(
                 MESSAGES_FOR_LOG['algorithm_for_smart'],
                 element['title']
