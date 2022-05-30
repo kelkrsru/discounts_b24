@@ -5,7 +5,7 @@ from pybitrix24 import Bitrix24
 
 
 class Portals(models.Model):
-    """Модель портала Битрикс24"""
+    """Модель портала Битрикс24."""
     member_id = models.CharField(
         verbose_name='Уникальный код портала',
         max_length=255,
@@ -52,6 +52,7 @@ class Portals(models.Model):
         if ((self.auth_id_create_date + timezone.timedelta(seconds=3600)) <
                 timezone.now()):
             bx24 = Bitrix24(self.name)
+            bx24.auth_hostname = 'oauth.bitrix.info'
             bx24._refresh_token = self.refresh_id
             bx24.client_id = self.client_id
             bx24.client_secret = self.client_secret

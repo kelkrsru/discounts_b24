@@ -69,7 +69,7 @@ def send_to_db(request):
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     handler = RotatingFileHandler(
-        '/home/a0646951/domains/devkel.ru/logs/send_to_db.log',
+        '/home/bitrix/ext_www/skidkipril.plazma-t.ru/logs/send_to_db.log',
         maxBytes=5000000,
         backupCount=5
     )
@@ -184,7 +184,7 @@ def get_from_db(request):
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     handler = RotatingFileHandler(
-        '/home/a0646951/domains/devkel.ru/logs/get_from_db.log',
+        '/home/bitrix/ext_www/skidkipril.plazma-t.ru/logs/get_from_db.log',
         maxBytes=5000000,
         backupCount=5
     )
@@ -259,7 +259,7 @@ def calculation(request):
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
     handler = RotatingFileHandler(
-        '/home/a0646951/domains/devkel.ru/logs/calculation.log',
+        '/home/bitrix/ext_www/skidkipril.plazma-t.ru/logs/calculation.log',
         maxBytes=5000000,
         backupCount=5
     )

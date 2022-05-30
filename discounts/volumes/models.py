@@ -14,7 +14,7 @@ class Volume(models.Model):
     )
     volume = models.DecimalField(
         verbose_name='Накопленный объем',
-        max_digits=12,
+        max_digits=16,
         decimal_places=2,
     )
     portal = models.ForeignKey(

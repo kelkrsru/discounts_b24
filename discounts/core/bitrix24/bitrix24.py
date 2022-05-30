@@ -5,7 +5,7 @@ from core.models import Portals
 
 
 class ObjB24:
-    """Класс объекта Битрикс24"""
+    """Класс объекта Битрикс24."""
 
     def __init__(self, portal: Portals):
         self.portal = portal
@@ -232,7 +232,7 @@ class SmartProcessB24(ObjB24):
         method_rest = 'crm.item.productrow.list'
         params = {
             'filter': {
-                '=ownerType': "Ta8",
+                '=ownerType': "Tb1",
                 "=ownerId": element_id
             }
         }
