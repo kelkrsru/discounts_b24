@@ -238,3 +238,21 @@ class SmartProcessB24(ObjB24):
         }
         result = self.bx24.call(method_rest, params)
         self.products = self._check_error(result)['productRows']
+
+
+class ListsB24(ObjB24):
+    """Class List Bitrix24."""
+    def __init__(self, portal, list_id):
+        super(ListsB24, self).__init__(portal)
+        self.id = list_id
+
+    def get_element_by_id(self, element_id):
+        """Get element list by id."""
+        method_rest = 'lists.element.get'
+        params = {
+            'IBLOCK_TYPE_ID': 'lists',
+            'IBLOCK_ID': self.id,
+            'ELEMENT_ID': element_id,
+        }
+        result = self.bx24.call(method_rest, params)
+        return self._check_error(result)
