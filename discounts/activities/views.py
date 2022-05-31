@@ -12,7 +12,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from pybitrix24 import Bitrix24
 
 from core.bitrix24.bitrix24 import (ActivityB24, DealB24, ProductB24,
-                                    CompanyB24, SmartProcessB24)
+                                    CompanyB24, SmartProcessB24, ListsB24)
 from core.models import Portals
 from volumes.models import Volume
 from settings.models import SettingsPortal
@@ -203,13 +203,15 @@ def get_from_db(request):
         'nomenclature_group_id': request.POST.get(
             'properties[nomenclature_group_id]') or 0,
         'company_id': request.POST.get('properties[company_id]') or 0,
+        'is_all': (True if request.POST.get('properties[is_all]') == 'Y'
+                   else False)
     }
     # Создаем портал
     try:
         portal: Portals = Portals.objects.get(
             member_id=initial_data['member_id'])
         portal.check_auth()
-        settings_portal = SettingsPortal.objects.get(portal=portal)
+        # settings_portal = SettingsPortal.objects.get(portal=portal)
     except ObjectDoesNotExist:
         logger.error(MESSAGES_FOR_LOG['portal_not_found'].format(
             initial_data['member_id']))
@@ -219,6 +221,7 @@ def get_from_db(request):
     try:
         nomenclature_group_id = int(initial_data['nomenclature_group_id'])
         company_id = int(initial_data['company_id'])
+        is_all = initial_data['is_all']
     except Exception as ex:
         logger.error(MESSAGES_FOR_LOG['error_start_data'].format(
             initial_data['deal_id'], initial_data['company_id']
@@ -231,25 +234,71 @@ def get_from_db(request):
         )
         return
     # Запрос в БД на получение накопленного объема
-    try:
-        volume = Volume.objects.get(
-            nomenclature_group_id=nomenclature_group_id,
+    if is_all:
+        volumes = Volume.objects.filter(
             company_id=company_id,
             portal=portal
         )
-    except ObjectDoesNotExist:
-        logger.info(MESSAGES_FOR_LOG['volume_no_db'].format(
-            nomenclature_group_id, company_id))
-        logger.info(MESSAGES_FOR_LOG['stop_app'])
+        if not volumes:
+            logger.info(MESSAGES_FOR_LOG['volumes_no_db'].format(company_id))
+            logger.info(MESSAGES_FOR_LOG['stop_app'])
+            response_for_bp(portal, initial_data['event_token'],
+                            MESSAGES_FOR_BP['volume_no_db'],
+                            return_values={'result': 'no_data'})
+            return
+        result_volume = {}
+        for volume in volumes:
+            try:
+                nomenclature_name = ListsB24(portal, 18).get_element_by_id(
+                    volume.nomenclature_group_id)[0]['NAME']
+                result_volume[nomenclature_name] = str(volume.volume)
+            except RuntimeError:
+                logger.error(
+                    MESSAGES_FOR_LOG['impossible_get_nomenclature_name'])
+                continue
+            except Exception as ex:
+                response_for_bp(
+                    portal,
+                    initial_data['event_token'],
+                    '{} {}'.format(MESSAGES_FOR_BP['main_error'], ex.args[0]),
+                )
+                return
+        logger.info(MESSAGES_FOR_LOG['get_volumes'].format(
+            str(result_volume), company_id))
         response_for_bp(portal, initial_data['event_token'],
-                        MESSAGES_FOR_BP['volume_no_db'])
-        return
-    logger.info(MESSAGES_FOR_LOG['get_volume'].format(
-        str(volume.volume), nomenclature_group_id, company_id))
-    response_for_bp(portal, initial_data['event_token'],
-                    MESSAGES_FOR_BP['get_from_db_ok'],
-                    return_values={'volume': str(volume.volume)})
-    logger.info(MESSAGES_FOR_LOG['stop_app'])
+                        MESSAGES_FOR_BP['get_from_db_ok'],
+                        return_values={
+                            'volume': str(result_volume),
+                            'result': 'ok',
+                        })
+        logger.info(MESSAGES_FOR_LOG['stop_app'])
+    else:
+        try:
+            volume = Volume.objects.get(
+                nomenclature_group_id=nomenclature_group_id,
+                company_id=company_id,
+                portal=portal
+            )
+            nomenclature_name = ListsB24(portal, 18).get_element_by_id(
+                volume.nomenclature_group_id)[0]['NAME']
+        except ObjectDoesNotExist:
+            logger.info(MESSAGES_FOR_LOG['volume_no_db'].format(
+                nomenclature_group_id, company_id))
+            logger.info(MESSAGES_FOR_LOG['stop_app'])
+            response_for_bp(portal, initial_data['event_token'],
+                            MESSAGES_FOR_BP['volume_no_db'],
+                            return_values={'result': 'no_data'})
+            return
+        logger.info(MESSAGES_FOR_LOG['get_volume'].format(
+            str(volume.volume), nomenclature_name, company_id))
+        response_for_bp(portal, initial_data['event_token'],
+                        MESSAGES_FOR_BP['get_from_db_ok'],
+                        return_values={
+                            'volume': f'{nomenclature_name}: '
+                                      f'{str(volume.volume)}',
+                            'result': 'ok',
+                        })
+        logger.info(MESSAGES_FOR_LOG['stop_app'])
 
 
 @csrf_exempt
