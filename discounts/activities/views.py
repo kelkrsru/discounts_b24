@@ -583,6 +583,9 @@ def calculation(request):
                     or not element[settings_portal.code_upper_two_accumulative]
                     or not element[
                         settings_portal.code_discount_upper_two_accumulative]
+                    or not element[settings_portal.code_upper_three_accumulative]
+                    or not element[
+                        settings_portal.code_discount_upper_three_accumulative]
             ):
                 logger.error(
                     MESSAGES_FOR_LOG['wrong_input_data_smart'].format(
@@ -592,13 +595,19 @@ def calculation(request):
             company_id = element['companyId']
             nomenclature_group_id = element[
                 settings_portal.code_nomenclature_group_accumulative]
-            # Проверяем совпадает ли id_company сделки и элемента
-            if company_id != company.id:
-                logger.info(
-                    MESSAGES_FOR_LOG['company_deal_not_company_smart'].format(
-                        company_id, company.id
-                    ))
+            # Проверяем номенклатурную группу в словаре номенклатурных групп
+            if nomenclature_group_id not in nomenclatures_groups:
+                logger.info('{} {}'.format(
+                    MESSAGES_FOR_LOG['no_discount_no_nomenclature_group_id'],
+                    nomenclature_group_id))
                 continue
+            # Проверяем совпадает ли id_company сделки и элемента
+            # if company_id != company.id:
+            #     logger.info(
+            #         MESSAGES_FOR_LOG['company_deal_not_company_smart'].format(
+            #             company_id, company.id
+            #         ))
+            #     continue
             # Проверяем есть ли накопления по компании и номенклатуре
             try:
                 volume_nomenclature_group = Volume.objects.get(
@@ -611,53 +620,107 @@ def calculation(request):
                     nomenclature_group_id, company_id
                 ))
                 continue
+            # Сформируем словарь предельных значений
+            accumulative_limits = {
+                'one': {
+                    'lower_limit': decimal.Decimal(element[
+                        settings_portal.code_upper_one_accumulative]),
+                    'upper_limit': decimal.Decimal(element[
+                        settings_portal.code_upper_two_accumulative]),
+                    'discount': decimal.Decimal(element[
+                        settings_portal.code_discount_upper_one_accumulative]),
+                },
+                'two': {
+                    'lower_limit': decimal.Decimal(element[
+                        settings_portal.code_upper_two_accumulative]),
+                    'upper_limit': decimal.Decimal(element[
+                        settings_portal.code_upper_three_accumulative]),
+                    'discount': decimal.Decimal(element[
+                        settings_portal.code_discount_upper_two_accumulative]),
+                },
+                'three': {
+                    'lower_limit': decimal.Decimal(element[
+                        settings_portal.code_upper_three_accumulative]),
+                    'discount': decimal.Decimal(element[
+                        settings_portal.code_discount_upper_three_accumulative]),
+                },
+            }
             # Проверяем предельные значения
-            if (volume_nomenclature_group.volume
-                    < decimal.Decimal(
-                        element[settings_portal.code_upper_one_accumulative])):
-                logger.info(MESSAGES_FOR_LOG['no_discount_one_upper'].format(
-                    str(volume_nomenclature_group.volume),
-                    element[settings_portal.code_upper_one_accumulative]
-                ))
-                continue
-            if (volume_nomenclature_group.volume
-                    >= decimal.Decimal(
-                        element[settings_portal.code_upper_two_accumulative])):
-                if (nomenclature_group_id in discounts and (
-                        discounts[nomenclature_group_id]
-                        >= element[
-                            settings_portal.code_discount_upper_two_accumulative])):
-                    logger.info(
-                        MESSAGES_FOR_LOG['no_discount_previous'].format(
-                            discounts[nomenclature_group_id],
-                            element[
-                                settings_portal.code_discount_upper_two_accumulative]
-                        ))
-                    continue
-                discounts[nomenclature_group_id] = element[
-                    settings_portal.code_discount_upper_two_accumulative]
-                logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
-                    nomenclature_group_id,
-                    element[
-                        settings_portal.code_discount_upper_two_accumulative]
-                ))
+            temp_discount = 0
+            if (accumulative_limits.get('one').get('lower_limit')
+                    <= volume_nomenclature_group.volume
+                    < accumulative_limits.get('one').get('upper_limit')):
+                temp_discount = accumulative_limits.get(
+                    'one').get('discount')
+            if (accumulative_limits.get('two').get('lower_limit')
+                    <= volume_nomenclature_group.volume
+                    < accumulative_limits.get('two').get('upper_limit')):
+                temp_discount = accumulative_limits.get(
+                    'two').get('discount')
+            if (accumulative_limits.get('three').get('lower_limit')
+                    <= volume_nomenclature_group.volume):
+                temp_discount = accumulative_limits.get(
+                    'three').get('discount')
+            # Проверяем какая скидка больше
             if (nomenclature_group_id in discounts and (
-                    discounts[nomenclature_group_id]
-                    >= element[
-                        settings_portal.code_discount_upper_one_accumulative])):
-                logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
-                    discounts[nomenclature_group_id],
-                    element[
-                        settings_portal.code_discount_upper_one_accumulative]
-                ))
+                    discounts[nomenclature_group_id] >= temp_discount)):
+                logger.info(
+                    MESSAGES_FOR_LOG['no_discount_previous'].format(
+                        discounts[nomenclature_group_id],
+                        element[
+                            settings_portal.code_discount_upper_two_accumulative]
+                    ))
                 continue
-            discounts[nomenclature_group_id] = element[
-                settings_portal.code_discount_upper_one_accumulative]
+            discounts[nomenclature_group_id] = temp_discount
             logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
-                nomenclature_group_id,
-                element[
-                    settings_portal.code_discount_upper_one_accumulative]
-            ))
+                nomenclature_group_id, temp_discount))
+            # Проверяем предельные значения
+            # if (volume_nomenclature_group.volume
+            #         < decimal.Decimal(
+            #             element[settings_portal.code_upper_one_accumulative])):
+            #     logger.info(MESSAGES_FOR_LOG['no_discount_one_upper'].format(
+            #         str(volume_nomenclature_group.volume),
+            #         element[settings_portal.code_upper_one_accumulative]
+            #     ))
+            #     continue
+            # if (volume_nomenclature_group.volume
+            #         >= decimal.Decimal(
+            #             element[settings_portal.code_upper_two_accumulative])):
+            #     if (nomenclature_group_id in discounts and (
+            #             discounts[nomenclature_group_id]
+            #             >= element[
+            #                 settings_portal.code_discount_upper_two_accumulative])):
+            #         logger.info(
+            #             MESSAGES_FOR_LOG['no_discount_previous'].format(
+            #                 discounts[nomenclature_group_id],
+            #                 element[
+            #                     settings_portal.code_discount_upper_two_accumulative]
+            #             ))
+            #         continue
+            #     discounts[nomenclature_group_id] = element[
+            #         settings_portal.code_discount_upper_two_accumulative]
+            #     logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
+            #         nomenclature_group_id,
+            #         element[
+            #             settings_portal.code_discount_upper_two_accumulative]
+            #     ))
+            # if (nomenclature_group_id in discounts and (
+            #         discounts[nomenclature_group_id]
+            #         >= element[
+            #             settings_portal.code_discount_upper_one_accumulative])):
+            #     logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
+            #         discounts[nomenclature_group_id],
+            #         element[
+            #             settings_portal.code_discount_upper_one_accumulative]
+            #     ))
+            #     continue
+            # discounts[nomenclature_group_id] = element[
+            #     settings_portal.code_discount_upper_one_accumulative]
+            # logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
+            #     nomenclature_group_id,
+            #     element[
+            #         settings_portal.code_discount_upper_one_accumulative]
+            # ))
         logger.info('{}{}'.format(
             MESSAGES_FOR_LOG['discounts_accumulative'],
             json.dumps(discounts, indent=2, ensure_ascii=False)))

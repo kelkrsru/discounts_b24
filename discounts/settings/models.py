@@ -114,6 +114,22 @@ class SettingsPortal(models.Model):
         max_length=20,
         default='ufCrm3_0000000000',
     )
+    code_upper_three_accumulative = models.CharField(
+        verbose_name='Код поля третьего порогового значения',
+        help_text='Код поля в smart процессе "Накопительная", отвечающий за '
+                  'третье пороговое значение в рублях. Тип поля - число.',
+        max_length=20,
+        default='ufCrm3_0000000000',
+    )
+    code_discount_upper_three_accumulative = models.CharField(
+        verbose_name='Код поля скидки в процентах для третьего порогового '
+                     'значения',
+        help_text='Код поля в smart процессе "Накопительная", отвечающий за '
+                  'скидку в процентах третьего порогового значения. Тип поля '
+                  '- число.',
+        max_length=20,
+        default='ufCrm3_0000000000',
+    )
     is_active_discount_product = models.BooleanField(
         verbose_name='Применять "Скидка на товар"',
         default=True,
