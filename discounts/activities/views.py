@@ -1,11 +1,12 @@
 import decimal
 import json
 import logging
+import time
 
 from logging.handlers import RotatingFileHandler
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.core.serializers.json import DjangoJSONEncoder
@@ -13,12 +14,17 @@ from pybitrix24 import Bitrix24
 
 from core.bitrix24.bitrix24 import (ActivityB24, DealB24, ProductB24,
                                     CompanyB24, SmartProcessB24, ListsB24)
+from activities.discount import InvoiceDiscount, PartnerDiscount, \
+    AccumulativeDiscount
 from core.models import Portals
 from volumes.models import Volume
 from settings.models import SettingsPortal
 from .models import Activity
 
 from .messages import MESSAGES_FOR_BP, MESSAGES_FOR_LOG
+
+
+loggers = {}
 
 
 @csrf_exempt
@@ -73,7 +79,8 @@ def send_to_db(request):
         maxBytes=5000000,
         backupCount=5
     )
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     # Запуск приложения
@@ -175,6 +182,9 @@ def send_to_db(request):
     logger.info(MESSAGES_FOR_LOG['stop_app'])
     response_for_bp(portal, initial_data['event_token'],
                     MESSAGES_FOR_BP['send_data_to_db_ok'])
+    handler.close()
+    logger.removeHandler(handler)
+    return HttpResponse(status=200)
 
 
 @csrf_exempt
@@ -188,7 +198,8 @@ def get_from_db(request):
         maxBytes=5000000,
         backupCount=5
     )
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     # Запуск приложения
@@ -299,6 +310,9 @@ def get_from_db(request):
                             'result': 'ok',
                         })
         logger.info(MESSAGES_FOR_LOG['stop_app'])
+    handler.close()
+    logger.removeHandler(handler)
+    return HttpResponse(status=200)
 
 
 @csrf_exempt
@@ -312,7 +326,8 @@ def calculation(request):
         maxBytes=5000000,
         backupCount=5
     )
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
     # Запуск приложения
@@ -359,11 +374,18 @@ def calculation(request):
     try:
         deal = DealB24(deal_id, portal)
         deal.get_all_products()
+        print(deal.products)
     except RuntimeError:
         logger.error(MESSAGES_FOR_LOG['impossible_get_products'])
         logger.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['impossible_get_products'])
+        return
+    except Exception as ex:
+        logger.error('test')
+        logger.info(MESSAGES_FOR_LOG['stop_app'])
+        response_for_bp(portal, initial_data['event_token'],
+                        ex.args[0])
         return
     # Добавляем в список товаров в каждый словарь дополнительное поле
     # nomenclature_group_id
@@ -394,12 +416,12 @@ def calculation(request):
         json.dumps(deal.products, indent=2, ensure_ascii=False)
     ))
     # Сформируем словарь номенклатурных групп
-    nomenclatures_groups = dict()
+    nomenclatures_groups: dict[str, decimal.Decimal] = dict()
     for product in deal.products:
         nomenclature_group_id = product['nomenclature_group_id']
         price = round(decimal.Decimal(product['PRICE_BRUTTO']), 2)
         quantity = round(decimal.Decimal(product['QUANTITY']), 2)
-        product_sum = quantity * price
+        product_sum: decimal.Decimal = quantity * price
         if nomenclature_group_id not in nomenclatures_groups:
             nomenclatures_groups[nomenclature_group_id] = product_sum
         else:
@@ -419,17 +441,24 @@ def calculation(request):
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['impossible_get_company_type'])
         return
-    discounts = dict()  # Основной словарь скидок по номенклатуре
+    # Основной словарь скидок по номенклатуре
+    discounts: dict[str, int] = dict()
     logger.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Скидки для Партнеров#############################
     logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
                                'Скидки для партнеров'))
     if settings_portal.is_active_partner:
-        # Получим все элементы смарт процесса Скидки для партнеров
+        partner_discounts = PartnerDiscount(
+            settings_portal.code_discount_smart_partner,
+            settings_portal.code_company_type_smart_partner,
+            settings_portal.code_nomenclature_group_id_smart_partner,
+            settings_portal.id_smart_process_partner,
+            nomenclatures_groups,
+            discounts,
+            portal
+        )
         try:
-            discounts_dealer = SmartProcessB24(
-                portal, settings_portal.id_smart_process_partner)
-            discounts_dealer.get_all_elements()
+            partner_discounts.get_all_elements_smart_process()
         except RuntimeError:
             logger.error(MESSAGES_FOR_LOG['impossible_get_smart_partner'])
             logger.info(MESSAGES_FOR_LOG['stop_app'])
@@ -438,45 +467,13 @@ def calculation(request):
             return
         logger.debug('{}{}'.format(
             MESSAGES_FOR_LOG['get_elements_discounts_partners'],
-            json.dumps(discounts_dealer.elements, indent=2, ensure_ascii=False)
+            json.dumps(partner_discounts.smart_process_elements,
+                       indent=2, ensure_ascii=False)
         ))
-        for element in discounts_dealer.elements:
-            # Проверяем входные данные элементов смарт процесса
-            if (not element[settings_portal.code_discount_smart_partner]
-                    or not element[
-                        settings_portal.code_company_type_smart_partner]
-                    or not element[
-                        settings_portal.code_nomenclature_group_id_smart_partner]
-            ):
-                logger.error(
-                    MESSAGES_FOR_LOG['wrong_input_data_smart'].format(
-                        element['title'], discounts_dealer.id
-                    ))
-                continue
-            # Проверяем есть ли нужный тип компании = типу компании сделки
-            if (company.type ==
-                    element[settings_portal.code_company_type_smart_partner]):
-                logger.info(MESSAGES_FOR_LOG['type_company_in_smart'].format(
-                    company.type, element['title']))
-                # Проверяем есть ли нужная номенклатурная группа
-                nomenclature_group_id = element[
-                    settings_portal.code_nomenclature_group_id_smart_partner]
-                if nomenclature_group_id not in nomenclatures_groups:
-                    logger.info('{} {}'.format(
-                        MESSAGES_FOR_LOG[
-                            'no_discount_no_nomenclature_group_id'],
-                        nomenclature_group_id))
-                    continue
-                discounts[nomenclature_group_id] = int(
-                    element[settings_portal.code_discount_smart_partner])
-                logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
-                    nomenclature_group_id,
-                    discounts[nomenclature_group_id])
-                )
-            else:
-                logger.info('Тип компании {}. НЕ найден в элементе {}'.format(
-                    company.type, element['title']
-                ))
+        partner_discounts.check_input_date()
+        partner_discounts.check_company_type(company.type)
+        partner_discounts.calculate_discounts()
+        partner_discounts.compare_discounts()
         logger.info('{}{}'.format(
             MESSAGES_FOR_LOG['discounts_partner'],
             json.dumps(discounts, indent=2, ensure_ascii=False)))
@@ -487,11 +484,15 @@ def calculation(request):
     logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
                                'Разовая от суммы счета'))
     if settings_portal.is_active_sum_invoice:
-        # Получим все элементы смарт процесса Скидки для партнеров
+        invoice_discounts: InvoiceDiscount = InvoiceDiscount(
+            settings_portal.code_discount_smart_sum_invoice,
+            settings_portal.id_smart_process_sum_invoice,
+            nomenclatures_groups,
+            discounts,
+            portal
+        )
         try:
-            discounts_sum_invoice = SmartProcessB24(
-                portal, settings_portal.id_smart_process_sum_invoice)
-            discounts_sum_invoice.get_all_elements()
+            invoice_discounts.get_all_elements_smart_process()
         except RuntimeError:
             logger.error(MESSAGES_FOR_LOG['impossible_get_smart_sum_invoice'])
             logger.info(MESSAGES_FOR_LOG['stop_app'])
@@ -501,52 +502,13 @@ def calculation(request):
             return
         logger.debug('{}{}'.format(
             MESSAGES_FOR_LOG['get_elements_sum_invoice'],
-            json.dumps(discounts_sum_invoice.elements, indent=2,
+            json.dumps(invoice_discounts.smart_process_elements, indent=2,
                        ensure_ascii=False)))
-        for element in discounts_sum_invoice.elements:
-            # Проверяем входные данные элементов смарт процесса
-            if (not element[settings_portal.code_discount_smart_sum_invoice]
-                    or not element[
-                        settings_portal.code_nomenclature_group_id_sum_invoice]
-            ):
-                logger.error(
-                    MESSAGES_FOR_LOG['wrong_input_data_smart'].format(
-                        element['title'], discounts_sum_invoice.id
-                    ))
-                continue
-            logger.info('{} {}'.format(
-                MESSAGES_FOR_LOG['algorithm_for_smart'],
-                element['title']))
-            nomenclature_group_id = element[
-                settings_portal.code_nomenclature_group_id_sum_invoice]
-            # Выясняем есть ли нужная номенклатура
-            if nomenclature_group_id not in nomenclatures_groups:
-                logger.info('{} {}'.format(
-                    MESSAGES_FOR_LOG['no_discount_no_nomenclature_group_id'],
-                    nomenclature_group_id))
-                continue
-            # Выясняем превышена ли сумма порога применения скидки
-            if (decimal.Decimal(element['opportunity']) >
-                    nomenclatures_groups[nomenclature_group_id]):
-                logger.info(MESSAGES_FOR_LOG['no_discount_sum_upper'].format(
-                    nomenclatures_groups[nomenclature_group_id],
-                    element['opportunity']))
-                continue
-            # Выясняем какая скидка больше
-            if (nomenclature_group_id in discounts and
-                    (discounts[nomenclature_group_id]
-                     >= element[
-                         settings_portal.code_discount_smart_sum_invoice])):
-                logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
-                    discounts[nomenclature_group_id],
-                    element[settings_portal.code_discount_smart_sum_invoice]))
-                continue
-            discounts[nomenclature_group_id] = element[
-                settings_portal.code_discount_smart_sum_invoice]
-            logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
-                nomenclature_group_id,
-                discounts[nomenclature_group_id])
-            )
+        invoice_discounts.check_input_date()
+        invoice_discounts.check_is_active_nomenclature_group(18, 'PROPERTY_75')
+        invoice_discounts.set_limits()
+        invoice_discounts.calculate_discounts()
+        invoice_discounts.compare_discounts()
         logger.info('{}{}'.format(
             MESSAGES_FOR_LOG['discounts_sum_invoice'],
             json.dumps(discounts, indent=2, ensure_ascii=False)))
@@ -557,11 +519,22 @@ def calculation(request):
     logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
                                'Накопительная скидка'))
     if settings_portal.is_active_accumulative:
-        # Получим все элементы смарт процесса Накопительная скидка
+        accumulative_discounts: AccumulativeDiscount = AccumulativeDiscount(
+            settings_portal.code_nomenclature_group_accumulative,
+            settings_portal.code_upper_one_accumulative,
+            settings_portal.code_discount_upper_one_accumulative,
+            settings_portal.code_upper_two_accumulative,
+            settings_portal.code_discount_upper_two_accumulative,
+            settings_portal.code_upper_three_accumulative,
+            settings_portal.code_discount_upper_three_accumulative,
+            settings_portal.id_smart_process_accumulative,
+            nomenclatures_groups,
+            discounts,
+            company_id,
+            portal
+        )
         try:
-            discounts_accumulative = SmartProcessB24(
-                portal, settings_portal.id_smart_process_accumulative)
-            discounts_accumulative.get_all_elements()
+            accumulative_discounts.get_all_elements_smart_process()
         except RuntimeError:
             logger.error(MESSAGES_FOR_LOG['impossible_get_smart_accumulative'])
             logger.info(MESSAGES_FOR_LOG['stop_app'])
@@ -571,156 +544,12 @@ def calculation(request):
             return
         logger.debug('{}{}'.format(
             MESSAGES_FOR_LOG['get_elements_accumulative'],
-            json.dumps(discounts_accumulative.elements, indent=2,
+            json.dumps(accumulative_discounts.smart_process_elements, indent=2,
                        ensure_ascii=False)))
-        for element in discounts_accumulative.elements:
-            # Проверяем входные данные элементов смарт процесса
-            if (not element[
-                settings_portal.code_nomenclature_group_accumulative]
-                    or not element[settings_portal.code_upper_one_accumulative]
-                    or not element[
-                        settings_portal.code_discount_upper_one_accumulative]
-                    or not element[settings_portal.code_upper_two_accumulative]
-                    or not element[
-                        settings_portal.code_discount_upper_two_accumulative]
-                    or not element[settings_portal.code_upper_three_accumulative]
-                    or not element[
-                        settings_portal.code_discount_upper_three_accumulative]
-            ):
-                logger.error(
-                    MESSAGES_FOR_LOG['wrong_input_data_smart'].format(
-                        element['title'], discounts_accumulative.id
-                    ))
-                continue
-            company_id = element['companyId']
-            nomenclature_group_id = element[
-                settings_portal.code_nomenclature_group_accumulative]
-            # Проверяем номенклатурную группу в словаре номенклатурных групп
-            if nomenclature_group_id not in nomenclatures_groups:
-                logger.info('{} {}'.format(
-                    MESSAGES_FOR_LOG['no_discount_no_nomenclature_group_id'],
-                    nomenclature_group_id))
-                continue
-            # Проверяем совпадает ли id_company сделки и элемента
-            # if company_id != company.id:
-            #     logger.info(
-            #         MESSAGES_FOR_LOG['company_deal_not_company_smart'].format(
-            #             company_id, company.id
-            #         ))
-            #     continue
-            # Проверяем есть ли накопления по компании и номенклатуре
-            try:
-                volume_nomenclature_group = Volume.objects.get(
-                    company_id=company_id,
-                    nomenclature_group_id=nomenclature_group_id,
-                    portal=portal
-                )
-            except ObjectDoesNotExist:
-                logger.info(MESSAGES_FOR_LOG['no_discount_no_db'].format(
-                    nomenclature_group_id, company_id
-                ))
-                continue
-            # Сформируем словарь предельных значений
-            accumulative_limits = {
-                'one': {
-                    'lower_limit': decimal.Decimal(element[
-                        settings_portal.code_upper_one_accumulative]),
-                    'upper_limit': decimal.Decimal(element[
-                        settings_portal.code_upper_two_accumulative]),
-                    'discount': decimal.Decimal(element[
-                        settings_portal.code_discount_upper_one_accumulative]),
-                },
-                'two': {
-                    'lower_limit': decimal.Decimal(element[
-                        settings_portal.code_upper_two_accumulative]),
-                    'upper_limit': decimal.Decimal(element[
-                        settings_portal.code_upper_three_accumulative]),
-                    'discount': decimal.Decimal(element[
-                        settings_portal.code_discount_upper_two_accumulative]),
-                },
-                'three': {
-                    'lower_limit': decimal.Decimal(element[
-                        settings_portal.code_upper_three_accumulative]),
-                    'discount': decimal.Decimal(element[
-                        settings_portal.code_discount_upper_three_accumulative]),
-                },
-            }
-            # Проверяем предельные значения
-            temp_discount = 0
-            if (accumulative_limits.get('one').get('lower_limit')
-                    <= volume_nomenclature_group.volume
-                    < accumulative_limits.get('one').get('upper_limit')):
-                temp_discount = accumulative_limits.get(
-                    'one').get('discount')
-            if (accumulative_limits.get('two').get('lower_limit')
-                    <= volume_nomenclature_group.volume
-                    < accumulative_limits.get('two').get('upper_limit')):
-                temp_discount = accumulative_limits.get(
-                    'two').get('discount')
-            if (accumulative_limits.get('three').get('lower_limit')
-                    <= volume_nomenclature_group.volume):
-                temp_discount = accumulative_limits.get(
-                    'three').get('discount')
-            # Проверяем какая скидка больше
-            if (nomenclature_group_id in discounts and (
-                    discounts[nomenclature_group_id] >= temp_discount)):
-                logger.info(
-                    MESSAGES_FOR_LOG['no_discount_previous'].format(
-                        discounts[nomenclature_group_id],
-                        element[
-                            settings_portal.code_discount_upper_two_accumulative]
-                    ))
-                continue
-            discounts[nomenclature_group_id] = temp_discount
-            logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
-                nomenclature_group_id, temp_discount))
-            # Проверяем предельные значения
-            # if (volume_nomenclature_group.volume
-            #         < decimal.Decimal(
-            #             element[settings_portal.code_upper_one_accumulative])):
-            #     logger.info(MESSAGES_FOR_LOG['no_discount_one_upper'].format(
-            #         str(volume_nomenclature_group.volume),
-            #         element[settings_portal.code_upper_one_accumulative]
-            #     ))
-            #     continue
-            # if (volume_nomenclature_group.volume
-            #         >= decimal.Decimal(
-            #             element[settings_portal.code_upper_two_accumulative])):
-            #     if (nomenclature_group_id in discounts and (
-            #             discounts[nomenclature_group_id]
-            #             >= element[
-            #                 settings_portal.code_discount_upper_two_accumulative])):
-            #         logger.info(
-            #             MESSAGES_FOR_LOG['no_discount_previous'].format(
-            #                 discounts[nomenclature_group_id],
-            #                 element[
-            #                     settings_portal.code_discount_upper_two_accumulative]
-            #             ))
-            #         continue
-            #     discounts[nomenclature_group_id] = element[
-            #         settings_portal.code_discount_upper_two_accumulative]
-            #     logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
-            #         nomenclature_group_id,
-            #         element[
-            #             settings_portal.code_discount_upper_two_accumulative]
-            #     ))
-            # if (nomenclature_group_id in discounts and (
-            #         discounts[nomenclature_group_id]
-            #         >= element[
-            #             settings_portal.code_discount_upper_one_accumulative])):
-            #     logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
-            #         discounts[nomenclature_group_id],
-            #         element[
-            #             settings_portal.code_discount_upper_one_accumulative]
-            #     ))
-            #     continue
-            # discounts[nomenclature_group_id] = element[
-            #     settings_portal.code_discount_upper_one_accumulative]
-            # logger.info(MESSAGES_FOR_LOG['discount_ok'].format(
-            #     nomenclature_group_id,
-            #     element[
-            #         settings_portal.code_discount_upper_one_accumulative]
-            # ))
+        accumulative_discounts.check_input_date()
+        accumulative_discounts.calculate_discounts()
+        accumulative_discounts.compare_discounts()
+
         logger.info('{}{}'.format(
             MESSAGES_FOR_LOG['discounts_accumulative'],
             json.dumps(discounts, indent=2, ensure_ascii=False)))
@@ -791,7 +620,7 @@ def calculation(request):
                                'Применение скидок'))
     for product in deal.products:
         nomenclature_group_id = product['nomenclature_group_id']
-        price_acc = decimal.Decimal(product['PRICE_ACCOUNT'])
+        # price_acc = decimal.Decimal(product['PRICE_ACCOUNT'])
         price_brutto = decimal.Decimal(product['PRICE_BRUTTO'])
         product_id = product['PRODUCT_ID']
         keys_for_del = ['ID', 'OWNER_ID', 'OWNER_TYPE', 'PRODUCT_NAME',
@@ -819,12 +648,6 @@ def calculation(request):
                     product_id
                 ))
                 continue
-            # if product['DISCOUNT_RATE'] >= all_discounts_products[product_id]:
-            #     logger.info(MESSAGES_FOR_LOG['no_discount_previous'].format(
-            #         product['DISCOUNT_RATE'],
-            #         all_discounts_products[product_id]
-            #     ))
-            #     continue
             discount_rate = all_discounts_products[product_id]
             product['DISCOUNT_RATE'] = discount_rate
             price = price_brutto * (100 - discount_rate) / 100
@@ -850,6 +673,9 @@ def calculation(request):
                     MESSAGES_FOR_BP['calculation_ok'])
     logger.info(MESSAGES_FOR_LOG['stop_block'])
     logger.info(MESSAGES_FOR_LOG['stop_app'])
+    handler.close()
+    logger.removeHandler(handler)
+    return HttpResponse(status=200)
 
 
 def response_for_bp(portal, event_token, log_message, return_values=None):

@@ -110,4 +110,6 @@ MESSAGES_FOR_LOG = {
                               '{} смарт процесса {}',
     'impossible_get_nomenclature_name': 'Невозможно получить имя для '
                                         'номенклатуры {}',
+    'impossible_get_nomenclature_is_active': 'Невозможно получить свойство '
+                                        'активности для номенклатуры {}',
 }
