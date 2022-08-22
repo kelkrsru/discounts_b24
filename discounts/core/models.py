@@ -1,6 +1,5 @@
 from django.db import models
 from django.utils import timezone
-
 from pybitrix24 import Bitrix24
 
 
@@ -49,8 +48,8 @@ class Portals(models.Model):
 
     def check_auth(self):
         """Метод проверки аутентификации на портале."""
-        if ((self.auth_id_create_date + timezone.timedelta(seconds=3600)) <
-                timezone.now()):
+        if ((self.auth_id_create_date + timezone.timedelta(seconds=3600))
+                < timezone.now()):
             bx24 = Bitrix24(self.name)
             bx24.auth_hostname = 'oauth.bitrix.info'
             bx24._refresh_token = self.refresh_id

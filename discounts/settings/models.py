@@ -1,6 +1,5 @@
-from django.db import models
-
 from core.models import Portals
+from django.db import models
 
 
 class SettingsPortal(models.Model):
@@ -11,6 +10,39 @@ class SettingsPortal(models.Model):
                   'группу. Тип поля - привязка к элементам списка.',
         max_length=20,
         default='PROPERTY_0',
+    )
+    id_uni_list_nomenclature_groups = models.PositiveIntegerField(
+        verbose_name='ID списка номенклатурных групп',
+        help_text='ID универсального списка, в котором заданы номенклатурные '
+                  'группы',
+        default=0,
+    )
+    code_accumulative_uni_list_is_active = models.CharField(
+        verbose_name='Код поля Участия в накопительных скидках',
+        help_text='Код поля универсального списка, в котором указывается '
+                  'участвует ли данная номенклатура в расчете '
+                  'Накопительных скидок.',
+        max_length=20,
+        default='PROPERTY_0',
+    )
+    accumulative_is_active_yes = models.CharField(
+        verbose_name='Значение ответа Да поля Участия в накопительных скидках',
+        max_length=5,
+        default='00'
+    )
+    code_sum_invoice_uni_list_is_active = models.CharField(
+        verbose_name='Код поля Участия в разовых скидках по счету',
+        help_text='Код поля универсального списка, в котором указывается '
+                  'участвует ли данная номенклатура в расчете '
+                  'Разовых скидок по счету.',
+        max_length=20,
+        default='PROPERTY_0',
+    )
+    sum_invoice_is_active_yes = models.CharField(
+        verbose_name='Значение ответа Да поля Участия в разовых скидках'
+                     ' по счету',
+        max_length=5,
+        default='00'
     )
     is_active_partner = models.BooleanField(
         verbose_name='Применять "Скидка для партнеров"',
@@ -166,4 +198,3 @@ class SettingsPortal(models.Model):
 
     def __str__(self):
         return 'Настройки для портала {}'.format(self.portal.name)
-

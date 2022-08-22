@@ -1,11 +1,9 @@
 from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.decorators.csrf import csrf_exempt
-
-from pybitrix24 import Bitrix24
+from settings.models import SettingsPortal
 
 from .models import Portals
-from settings.models import SettingsPortal
 
 
 @xframe_options_exempt

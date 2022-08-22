@@ -1,16 +1,15 @@
-from django.http import HttpResponse
-from django.shortcuts import render, get_object_or_404
-from django.views.decorators.clickjacking import xframe_options_exempt
-from django.views.decorators.csrf import csrf_exempt
-
-from openpyxl import Workbook
-
+from activities.models import Activity
 from core.bitrix24.bitrix24 import ActivityB24
 from core.models import Portals
-from activities.models import Activity
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404, render
+from django.views.decorators.clickjacking import xframe_options_exempt
+from django.views.decorators.csrf import csrf_exempt
+from openpyxl import Workbook
 from volumes.models import Volume
-from .models import SettingsPortal
+
 from .forms import SettingsPortalForm
+from .models import SettingsPortal
 
 
 @xframe_options_exempt
@@ -35,7 +34,8 @@ def index(request):
     activities: Activity = Activity.objects.all()
 
     try:
-        activities_installed = ActivityB24(portal).get_all_installed()
+        activities_installed = ActivityB24(portal,
+                                           obj_id=None).get_all_installed()
     except RuntimeError as ex:
         return render(request, 'error.html', {
             'error_name': ex.args[0],

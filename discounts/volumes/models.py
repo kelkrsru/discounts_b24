@@ -1,16 +1,18 @@
-from django.db import models
-
 from core.models import Portals
+from django.db import models
 
 
 class Volume(models.Model):
     """Модель накопленного объема по номенклатуре и компании"""
-    nomenclature_group_id = models.IntegerField(
-        verbose_name='ID группы номенклатуры',
-    )
     company_id = models.IntegerField(
-        verbose_name='ID компании',
-
+        verbose_name='ID компании'
+    )
+    inn = models.CharField(
+        verbose_name='ИНН компании',
+        max_length=50,
+        unique=True,
+        blank=True,
+        null=True
     )
     volume = models.DecimalField(
         verbose_name='Накопленный объем',
@@ -21,10 +23,10 @@ class Volume(models.Model):
         Portals,
         verbose_name='Портал',
         related_name='volumes',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE
     )
 
     class Meta:
         verbose_name = 'Объем'
         verbose_name_plural = 'Объемы'
-        unique_together = ['portal', 'company_id', 'nomenclature_group_id']
+        unique_together = ['portal', 'company_id']

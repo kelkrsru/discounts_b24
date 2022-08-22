@@ -54,28 +54,28 @@
             {% csrf_token %}
 
             {% for field in form %}
-              {% if forloop.counter == 2 %}
+              {% if forloop.counter == 7 %}
                 <div class="card mt-3">
                   <div class="card-header fw-bold bg-info text-white">
                     Настройки smart процесса "Скидка для Партнеров"
                   </div>
                   <div class="card-body">
               {% endif %}
-              {% if forloop.counter == 7 %}
+              {% if forloop.counter == 12 %}
                 <div class="card mt-3">
                   <div class="card-header fw-bold bg-info text-white">
                     Настройки smart процесса "Разовая от суммы счета"
                   </div>
                   <div class="card-body">
               {% endif %}
-              {% if forloop.counter == 11 %}
+              {% if forloop.counter == 16 %}
                 <div class="card mt-3">
                   <div class="card-header fw-bold bg-info text-white">
                     Настройки smart процесса "Накопительная скидка"
                   </div>
                   <div class="card-body">
               {% endif %}
-              {% if forloop.counter == 20 %}
+              {% if forloop.counter == 25 %}
                 <div class="card mt-3">
                   <div class="card-header fw-bold bg-info text-white">
                     Настройки smart процесса "Скидка на товар"
@@ -113,7 +113,7 @@
                   </small>
                 {% endif %}
               </div>
-              {% if forloop.counter == 6 or forloop.counter == 10 or forloop.counter == 19 or forloop.counter == 23 %}
+              {% if forloop.counter == 11 or forloop.counter == 15 or forloop.counter == 24 or forloop.counter == 28 %}
                   </div>
                 </div>
               {% endif %}

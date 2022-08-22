@@ -59,7 +59,8 @@ class Activity(models.Model):
                     'Multiple': 'Y' if prop.multiple else 'N',
                     'Default': prop.default,
                     'Options': {
-                        opt.code: opt.name for opt in prop.optionsforselect.all()
+                        opt.code: opt.name for opt in (prop.optionsforselect.
+                                                       all())
                     },
                 } for prop in self.fields.filter(kind='PROPERTIES')
             },

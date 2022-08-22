@@ -41,7 +41,7 @@ def multiply(qty, unit_price):
 @register.simple_tag
 def tax_sum(qty, unit_price, rate):
     sum = decimal.Decimal(qty) * decimal.Decimal(unit_price)
-    return round(sum*decimal.Decimal(rate)/100, 2)
+    return round(sum * decimal.Decimal(rate) / 100, 2)
 
 
 register.filter('addclass', addclass)

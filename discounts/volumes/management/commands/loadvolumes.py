@@ -2,7 +2,6 @@ import csv
 import decimal
 
 from django.core.management.base import BaseCommand
-
 from volumes.models import Volume
 
 
@@ -12,10 +11,9 @@ class Command(BaseCommand):
             reader = csv.DictReader(csvfile)
             for row in reader:
                 obj, created = Volume.objects.get_or_create(
-                    nomenclature_group_id=row['nomenclature_group_id'],
                     company_id=row['company_id'],
                     portal_id=row['portal_id'],
-                    defaults={'volume': row['volume']}
+                    defaults={'volume': row['volume'], 'inn': row['inn']}
                 )
 
                 if not created:
