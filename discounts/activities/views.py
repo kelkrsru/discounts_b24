@@ -21,8 +21,6 @@ from volumes.models import Volume
 from .messages import MESSAGES_FOR_BP, MESSAGES_FOR_LOG
 from .models import Activity
 
-loggers = {}
-
 
 @csrf_exempt
 def install(request):
@@ -69,9 +67,9 @@ def uninstall(request):
 def send_to_db(request):
     """View-функция для работы активити 'Передача объемов в БД'."""
     # Установки логирования
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    if not logger.hasHandlers():
+    logger_send = logging.getLogger(__name__)
+    logger_send.setLevel(logging.DEBUG)
+    if not logger_send.hasHandlers():
         handler = RotatingFileHandler(
             '/home/bitrix/ext_www/skidkipril.plazma-t.ru/logs/send_to_db.log',
             maxBytes=5000000,
@@ -80,21 +78,21 @@ def send_to_db(request):
         formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s")
         handler.setFormatter(formatter)
-        logger.addHandler(handler)
+        logger_send.addHandler(handler)
     # Запуск приложения
-    initial_data = start_app(request, logger)
+    initial_data = start_app(request, logger_send)
     # Создаем портал
-    portal, settings_portal = create_portal(initial_data, logger)
+    portal, settings_portal = create_portal(initial_data, logger_send)
     # Проверяем начальные данные
-    deal_id, company_id = check_initial_data(portal, initial_data, logger)
+    deal_id, company_id = check_initial_data(portal, initial_data, logger_send)
     # Получаем все продукты сделки
     deal = create_deal_and_get_all_products(portal, deal_id, initial_data,
-                                            logger)
+                                            logger_send)
     company = CompanyB24(portal, company_id)
     inn = company.get_inn()
     # Сформируем словарь номенклатурных групп
     nomenclatures_groups = (fill_nomenclatures_groups(
-        portal, settings_portal, initial_data, deal, logger))
+        portal, settings_portal, initial_data, deal, logger_send, 'send'))
 
     accumulative_discounts: AccumulativeDiscount = AccumulativeDiscount(
         settings_portal.code_nomenclature_group_accumulative,
@@ -115,7 +113,7 @@ def send_to_db(request):
     accumulative_discounts.check_is_active_nomenclature_group(
         settings_portal.id_uni_list_nomenclature_groups
     )
-    logger.info('{}{}'.format(
+    logger_send.info('{}{}'.format(
         MESSAGES_FOR_LOG['get_active_nomenclature_groups'],
         json.dumps(accumulative_discounts.nomenclature_groups_active, indent=2,
                    ensure_ascii=False, cls=DjangoJSONEncoder)))
@@ -132,15 +130,15 @@ def send_to_db(request):
             volume.volume += prod_sum
             volume.save()
     except IntegrityError:
-        logger.info(MESSAGES_FOR_LOG['wrong_inn'].format(inn))
-        logger.info(MESSAGES_FOR_LOG['stop_app'])
+        logger_send.info(MESSAGES_FOR_LOG['wrong_inn'].format(inn))
+        logger_send.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['wrong_inn'],
                         return_values={'result': 'wrong_inn'})
         return HttpResponse(status=200)
 
-    logger.info(MESSAGES_FOR_LOG['send_data_to_db_ok'])
-    logger.info(MESSAGES_FOR_LOG['stop_app'])
+    logger_send.info(MESSAGES_FOR_LOG['send_data_to_db_ok'])
+    logger_send.info(MESSAGES_FOR_LOG['stop_app'])
     response_for_bp(portal, initial_data['event_token'],
                     MESSAGES_FOR_BP['send_data_to_db_ok'],
                     return_values={'result': str(prod_sum)})
@@ -151,9 +149,9 @@ def send_to_db(request):
 def get_from_db(request):
     """View-функция для работы активити 'Получение объемов из БД'."""
     # Установки логирования
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    if not logger.hasHandlers():
+    logger_get = logging.getLogger(__name__)
+    logger_get.setLevel(logging.DEBUG)
+    if not logger_get.hasHandlers():
         handler = RotatingFileHandler(
             '/home/bitrix/ext_www/skidkipril.plazma-t.ru/logs/get_from_db.log',
             maxBytes=5000000,
@@ -162,17 +160,17 @@ def get_from_db(request):
         formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s")
         handler.setFormatter(formatter)
-        logger.addHandler(handler)
+        logger_get.addHandler(handler)
     # Получения начальных значений
-    initial_data = start_app(request, logger)
+    initial_data = start_app(request, logger_get)
     # Создаем портал
-    portal, settings_portal = create_portal(initial_data, logger)
+    portal, settings_portal = create_portal(initial_data, logger_get)
     # Проверяем начальные данные
-    deal_id, company_id = check_initial_data(portal, initial_data, logger)
+    deal_id, company_id = check_initial_data(portal, initial_data, logger_get)
     # Запрос в БД на получение накопленного объема
     try:
         volume = Volume.objects.get(company_id=company_id, portal=portal)
-        logger.info(MESSAGES_FOR_LOG['get_volumes'].format(
+        logger_get.info(MESSAGES_FOR_LOG['get_volumes'].format(
             str(volume.volume), company_id))
         response_for_bp(
             portal,
@@ -181,13 +179,13 @@ def get_from_db(request):
             return_values={'volume': str(volume.volume), 'result': 'ok'}
         )
     except ObjectDoesNotExist:
-        logger.info(MESSAGES_FOR_LOG['volumes_no_db'].format(company_id))
-        logger.info(MESSAGES_FOR_LOG['stop_app'])
+        logger_get.info(MESSAGES_FOR_LOG['volumes_no_db'].format(company_id))
+        logger_get.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['volume_no_db'],
                         return_values={'result': 'no_data'})
         return HttpResponse(status=200)
-    logger.info(MESSAGES_FOR_LOG['stop_app'])
+    logger_get.info(MESSAGES_FOR_LOG['stop_app'])
     return HttpResponse(status=200)
 
 
@@ -195,9 +193,9 @@ def get_from_db(request):
 def calculation(request):
     """View-функция для работы активити 'Расчет скидок'."""
     # Установки логирования
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    if not logger.hasHandlers():
+    logger_calc = logging.getLogger(__name__)
+    logger_calc.setLevel(logging.DEBUG)
+    if not logger_calc.hasHandlers():
         handler = RotatingFileHandler(
             '/home/bitrix/ext_www/skidkipril.plazma-t.ru/logs/calculation.log',
             maxBytes=5000000,
@@ -206,77 +204,77 @@ def calculation(request):
         formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s")
         handler.setFormatter(formatter)
-        logger.addHandler(handler)
+        logger_calc.addHandler(handler)
     # Запуск приложения
-    initial_data = start_app(request, logger)
+    initial_data = start_app(request, logger_calc)
     # Создаем портал
-    portal, settings_portal = create_portal(initial_data, logger)
+    portal, settings_portal = create_portal(initial_data, logger_calc)
     # Проверяем начальные данные
-    deal_id, company_id = check_initial_data(portal, initial_data, logger)
+    deal_id, company_id = check_initial_data(portal, initial_data, logger_calc)
     # Получаем все продукты сделки
     deal = create_deal_and_get_all_products(portal, deal_id, initial_data,
-                                            logger)
+                                            logger_calc)
     # Сформируем словарь номенклатурных групп
     nomenclatures_groups = (fill_nomenclatures_groups(
-        portal, settings_portal, initial_data, deal, logger))
+        portal, settings_portal, initial_data, deal, logger_calc))
     # Создаем компанию и получаем ее тип
     company: CompanyB24 = create_company(portal, company_id, initial_data,
-                                         logger)
+                                         logger_calc)
     # Основной словарь скидок по номенклатуре
     discounts: dict[str, int] = dict()
-    logger.info(MESSAGES_FOR_LOG['stop_block'])
+    logger_calc.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Скидки для Партнеров#############################
-    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
-                               'Скидки для партнеров'))
+    logger_calc.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                                    'Скидки для партнеров'))
     if settings_portal.is_active_partner:
         calculate_partner_discounts(portal, settings_portal, initial_data,
                                     nomenclatures_groups, discounts, company,
-                                    logger)
-        logger.info('{}{}'.format(
+                                    logger_calc)
+        logger_calc.info('{}{}'.format(
             MESSAGES_FOR_LOG['discounts_partner'],
             json.dumps(discounts, indent=2, ensure_ascii=False)))
     else:
-        logger.info(MESSAGES_FOR_LOG['partner_off'])
-    logger.info(MESSAGES_FOR_LOG['stop_block'])
+        logger_calc.info(MESSAGES_FOR_LOG['partner_off'])
+    logger_calc.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Разовая от суммы счета############################
-    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
-                               'Разовая от суммы счета'))
+    logger_calc.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                                    'Разовая от суммы счета'))
     if settings_portal.is_active_sum_invoice:
         calculate_sum_invoice_discounts(portal, settings_portal, initial_data,
                                         nomenclatures_groups, discounts,
-                                        logger)
-        logger.info('{}{}'.format(
+                                        logger_calc)
+        logger_calc.info('{}{}'.format(
             MESSAGES_FOR_LOG['discounts_sum_invoice'],
             json.dumps(discounts, indent=2, ensure_ascii=False)))
     else:
-        logger.info(MESSAGES_FOR_LOG['sum_invoice_off'])
-    logger.info(MESSAGES_FOR_LOG['stop_block'])
+        logger_calc.info(MESSAGES_FOR_LOG['sum_invoice_off'])
+    logger_calc.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Накопительная#############################
-    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
-                               'Накопительная скидка'))
+    logger_calc.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                                    'Накопительная скидка'))
     if settings_portal.is_active_accumulative:
         calculate_accumulative_discounts(portal, settings_portal, initial_data,
                                          nomenclatures_groups, discounts,
-                                         company, logger)
-        logger.info('{}{}'.format(
+                                         company, logger_calc)
+        logger_calc.info('{}{}'.format(
             MESSAGES_FOR_LOG['discounts_accumulative'],
             json.dumps(discounts, indent=2, ensure_ascii=False)))
     else:
-        logger.info(MESSAGES_FOR_LOG['accumulative_off'])
-    logger.info(MESSAGES_FOR_LOG['stop_block'])
+        logger_calc.info(MESSAGES_FOR_LOG['accumulative_off'])
+    logger_calc.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Скидки на товар#############################
-    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
-                               'Скидки на конкретный товар'))
+    logger_calc.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                                    'Скидки на конкретный товар'))
     all_discounts_products = {}
     if settings_portal.is_active_discount_product:
         all_discounts_products = calculate_product_discounts(
-            portal, settings_portal, initial_data, company, logger)
+            portal, settings_portal, initial_data, company, logger_calc)
     else:
-        logger.info(MESSAGES_FOR_LOG['discount_product_off'])
-    logger.info(MESSAGES_FOR_LOG['stop_block'])
+        logger_calc.info(MESSAGES_FOR_LOG['discount_product_off'])
+    logger_calc.info(MESSAGES_FOR_LOG['stop_block'])
     # #######################Применяем скидки#############################
-    logger.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
-                               'Применение скидок'))
+    logger_calc.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
+                                    'Применение скидок'))
     for product in deal.products:
         nomenclature_group_id = product['nomenclature_group_id']
         # price_acc = decimal.Decimal(product['PRICE_ACCOUNT'])
@@ -295,33 +293,35 @@ def calculation(request):
             product['DISCOUNT_RATE'] = discount_rate
             price = price_brutto * (100 - discount_rate) / 100
             product['PRICE'] = str(price)
-            logger.info(MESSAGES_FOR_LOG['discount_ok_product'].format(
+            logger_calc.info(MESSAGES_FOR_LOG['discount_ok_product'].format(
                 product_id, discount_rate
             ))
         else:
             product['DISCOUNT_RATE'] = 0
+            product['PRICE'] = str(price_brutto)
         # Применяем скидки на конкретный товар
         if settings_portal.is_active_discount_product:
             if product_id not in all_discounts_products:
-                logger.info(MESSAGES_FOR_LOG['no_discount_one_product'].format(
-                    product_id
-                ))
+                logger_calc.info(
+                    MESSAGES_FOR_LOG['no_discount_one_product'].format(
+                        product_id
+                    ))
                 continue
             discount_rate = all_discounts_products[product_id]
             product['DISCOUNT_RATE'] = discount_rate
             price = price_brutto * (100 - discount_rate) / 100
             product['PRICE'] = str(price)
-            logger.info(MESSAGES_FOR_LOG['discount_ok_product'].format(
+            logger_calc.info(MESSAGES_FOR_LOG['discount_ok_product'].format(
                 product_id, discount_rate
             ))
-    logger.debug('{}{}'.format(
+    logger_calc.debug('{}{}'.format(
         MESSAGES_FOR_LOG['all_products_send_bp'],
         json.dumps(deal.products, indent=2, ensure_ascii=False)))
     try:
         deal.set_products(deal.products)
     except RuntimeError:
-        logger.error(MESSAGES_FOR_LOG['impossible_send_to_deal'])
-        logger.info(MESSAGES_FOR_LOG['stop_app'])
+        logger_calc.error(MESSAGES_FOR_LOG['impossible_send_to_deal'])
+        logger_calc.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(
             portal, initial_data['event_token'],
             MESSAGES_FOR_BP['impossible_send_to_deal'],
@@ -330,8 +330,8 @@ def calculation(request):
     # Возвращаем результат
     response_for_bp(portal, initial_data['event_token'],
                     MESSAGES_FOR_BP['calculation_ok'])
-    logger.info(MESSAGES_FOR_LOG['stop_block'])
-    logger.info(MESSAGES_FOR_LOG['stop_app'])
+    logger_calc.info(MESSAGES_FOR_LOG['stop_block'])
+    logger_calc.info(MESSAGES_FOR_LOG['stop_app'])
     return HttpResponse(status=200)
 
 
@@ -415,11 +415,12 @@ def create_deal_and_get_all_products(portal: Portals, deal_id: int,
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['products_in_deal_null'])
         return HttpResponse(status=200)
-    except RuntimeError:
+    except RuntimeError as ex:
         logger.error(MESSAGES_FOR_LOG['impossible_get_products'])
         logger.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
-                        MESSAGES_FOR_BP['impossible_get_products'])
+                        MESSAGES_FOR_BP['impossible_get_products'] + ex.args[
+                            0])
         return HttpResponse(status=200)
 
 
@@ -439,8 +440,8 @@ def create_company(portal: Portals, company_id: int,
 
 def fill_nomenclatures_groups(
         portal: Portals, settings_portal: SettingsPortal,
-        initial_data: dict[str, str or int], deal: DealB24,
-        logger) -> dict[int, decimal.Decimal] or HttpResponse:
+        initial_data: dict[str, str or int], deal: DealB24, logger,
+        func_name: str = 'calc') -> dict[int, decimal.Decimal] or HttpResponse:
     nomenclatures_groups: dict[int, decimal.Decimal] = dict()
     for product in deal.products:
         try:
@@ -463,7 +464,10 @@ def fill_nomenclatures_groups(
         nomenclature_group_id = int(prod.properties.get(
             settings_portal.code_nomenclature_group_id).get('value'))
         product['nomenclature_group_id'] = nomenclature_group_id
-        price = round(decimal.Decimal(product['PRICE_BRUTTO']), 2)
+        if func_name == 'calc':
+            price = round(decimal.Decimal(product['PRICE_BRUTTO']), 2)
+        else:
+            price = round(decimal.Decimal(product['PRICE']), 2)
         quantity = round(decimal.Decimal(product['QUANTITY']), 2)
         product_sum = decimal.Decimal(round(quantity * price, 2))
         if nomenclature_group_id not in nomenclatures_groups:
