@@ -6,7 +6,7 @@ from logging.handlers import RotatingFileHandler
 from activities.discount import (AccumulativeDiscount, InvoiceDiscount,
                                  PartnerDiscount)
 from core.bitrix24.bitrix24 import (ActivityB24, CompanyB24, DealB24,
-                                    ProductB24, SmartProcessB24)
+                                    ProductB24, QuoteB24, SmartProcessB24)
 from core.models import Portals
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
@@ -84,15 +84,15 @@ def send_to_db(request):
     # Создаем портал
     portal, settings_portal = create_portal(initial_data, logger_send)
     # Проверяем начальные данные
-    deal_id, company_id = check_initial_data(portal, initial_data, logger_send)
-    # Получаем все продукты сделки
-    deal = create_deal_and_get_all_products(portal, deal_id, initial_data,
-                                            logger_send)
+    obj_id, company_id = check_initial_data(portal, initial_data, logger_send)
+    # Получаем все продукты сделки или предложения
+    obj = create_obj_and_get_all_products(portal, obj_id, initial_data,
+                                          logger_send)
     company = CompanyB24(portal, company_id)
     inn = company.get_inn()
     # Сформируем словарь номенклатурных групп
     nomenclatures_groups = (fill_nomenclatures_groups(
-        portal, settings_portal, initial_data, deal, logger_send, 'send'))
+        portal, settings_portal, initial_data, obj, logger_send, 'send'))
 
     accumulative_discounts: AccumulativeDiscount = AccumulativeDiscount(
         settings_portal.code_nomenclature_group_accumulative,
@@ -166,7 +166,7 @@ def get_from_db(request):
     # Создаем портал
     portal, settings_portal = create_portal(initial_data, logger_get)
     # Проверяем начальные данные
-    deal_id, company_id = check_initial_data(portal, initial_data, logger_get)
+    obj_id, company_id = check_initial_data(portal, initial_data, logger_get)
     # Запрос в БД на получение накопленного объема
     try:
         volume = Volume.objects.get(company_id=company_id, portal=portal)
@@ -210,13 +210,13 @@ def calculation(request):
     # Создаем портал
     portal, settings_portal = create_portal(initial_data, logger_calc)
     # Проверяем начальные данные
-    deal_id, company_id = check_initial_data(portal, initial_data, logger_calc)
+    obj_id, company_id = check_initial_data(portal, initial_data, logger_calc)
     # Получаем все продукты сделки
-    deal = create_deal_and_get_all_products(portal, deal_id, initial_data,
-                                            logger_calc)
+    obj = create_obj_and_get_all_products(portal, obj_id, initial_data,
+                                          logger_calc)
     # Сформируем словарь номенклатурных групп
     nomenclatures_groups = (fill_nomenclatures_groups(
-        portal, settings_portal, initial_data, deal, logger_calc))
+        portal, settings_portal, initial_data, obj, logger_calc))
     # Создаем компанию и получаем ее тип
     company: CompanyB24 = create_company(portal, company_id, initial_data,
                                          logger_calc)
@@ -275,7 +275,7 @@ def calculation(request):
     # #######################Применяем скидки#############################
     logger_calc.info('{} {}'.format(MESSAGES_FOR_LOG['start_block'],
                                     'Применение скидок'))
-    for product in deal.products:
+    for product in obj.products:
         nomenclature_group_id = product['nomenclature_group_id']
         # price_acc = decimal.Decimal(product['PRICE_ACCOUNT'])
         price_brutto = decimal.Decimal(product['PRICE_BRUTTO'])
@@ -316,9 +316,9 @@ def calculation(request):
             ))
     logger_calc.debug('{}{}'.format(
         MESSAGES_FOR_LOG['all_products_send_bp'],
-        json.dumps(deal.products, indent=2, ensure_ascii=False)))
+        json.dumps(obj.products, indent=2, ensure_ascii=False)))
     try:
-        deal.set_products(deal.products)
+        obj.set_products(obj.products)
     except RuntimeError:
         logger_calc.error(MESSAGES_FOR_LOG['impossible_send_to_deal'])
         logger_calc.info(MESSAGES_FOR_LOG['stop_app'])
@@ -360,7 +360,8 @@ def start_app(request, logger) -> dict[str, any] or HttpResponse:
     return {
         'member_id': request.POST.get('auth[member_id]'),
         'event_token': request.POST.get('event_token'),
-        'deal_id': request.POST.get('properties[deal_id]') or 0,
+        'document_type': request.POST.get('document_type[2]'),
+        'obj_id': request.POST.get('properties[obj_id]') or 0,
         'company_id': request.POST.get('properties[company_id]') or 0
     }
 
@@ -385,12 +386,12 @@ def check_initial_data(portal: Portals, initial_data: dict[str, any],
                        logger) -> tuple[int, int] or HttpResponse:
     """Функция проверки начальных данных."""
     try:
-        deal_id = int(initial_data['deal_id'])
+        obj_id = int(initial_data['obj_id'])
         company_id = int(initial_data['company_id'])
-        return deal_id, company_id
+        return obj_id, company_id
     except Exception as ex:
         logger.error(MESSAGES_FOR_LOG['error_start_data'].format(
-            initial_data['deal_id'], initial_data['company_id']
+            initial_data['obj_id'], initial_data['company_id']
         ))
         logger.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(
@@ -401,15 +402,18 @@ def check_initial_data(portal: Portals, initial_data: dict[str, any],
         return HttpResponse(status=200)
 
 
-def create_deal_and_get_all_products(portal: Portals, deal_id: int,
-                                     initial_data: dict[str, any],
-                                     logger) -> DealB24 or HttpResponse:
-    """Функция создания сделки и получения всех товаров."""
+def create_obj_and_get_all_products(
+        portal: Portals, obj_id: int, initial_data: dict[str, any],
+        logger) -> (DealB24 or QuoteB24) or HttpResponse:
+    """Функция создания сделки или предложения и получения всех товаров."""
     try:
-        deal = DealB24(portal, deal_id)
-        deal.get_all_products()
-        if deal.products:
-            return deal
+        if initial_data['document_type'] == 'DEAL':
+            obj = DealB24(portal, obj_id)
+        else:
+            obj = QuoteB24(portal, obj_id)
+        obj.get_all_products()
+        if obj.products:
+            return obj
         logger.error(MESSAGES_FOR_LOG['products_in_deal_null'])
         logger.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
@@ -440,10 +444,10 @@ def create_company(portal: Portals, company_id: int,
 
 def fill_nomenclatures_groups(
         portal: Portals, settings_portal: SettingsPortal,
-        initial_data: dict[str, str or int], deal: DealB24, logger,
+        initial_data: dict[str, str or int], obj: DealB24 or QuoteB24, logger,
         func_name: str = 'calc') -> dict[int, decimal.Decimal] or HttpResponse:
     nomenclatures_groups: dict[int, decimal.Decimal] = dict()
-    for product in deal.products:
+    for product in obj.products:
         try:
             prod: ProductB24 = ProductB24(portal, product["PRODUCT_ID"])
         except RuntimeError:

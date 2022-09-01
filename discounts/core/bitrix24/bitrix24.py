@@ -70,6 +70,32 @@ class DealB24(ObjB24):
         ))
 
 
+class QuoteB24(ObjB24):
+    """Класс Предложение."""
+    GET_PROPS_REST_METHOD: str = 'crm.quote.get'
+
+    def __init__(self, portal: Portals, id_obj: int):
+        super().__init__(portal, id_obj)
+        self.products = None
+        self.responsible = self.properties.get('ASSIGNED_BY_ID')
+
+    def get_all_products(self):
+        """Получить все продукты предложения."""
+        self.products = self._check_error(self.bx24.call(
+            'crm.quote.productrows.get', {'id': self.id}
+        ))
+
+    def set_products(self, prods_rows):
+        """Добавить товар в сделку в Битрикс24"""
+        return self._check_error(self.bx24.call(
+            'crm.quote.productrows.set',
+            {
+                'id': self.id,
+                'rows': prods_rows,
+            }
+        ))
+
+
 class CompanyB24(ObjB24):
     """Класс Компания Битрикс24."""
     GET_PROPS_REST_METHOD: str = 'crm.company.get'
