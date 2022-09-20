@@ -6,7 +6,8 @@ from logging.handlers import RotatingFileHandler
 from activities.discount import (AccumulativeDiscount, InvoiceDiscount,
                                  PartnerDiscount)
 from core.bitrix24.bitrix24 import (ActivityB24, CompanyB24, DealB24,
-                                    ProductB24, QuoteB24, SmartProcessB24)
+                                    ProductB24, QuoteB24, SmartProcessB24,
+                                    ProductRowB24)
 from core.models import Portals
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
@@ -67,7 +68,7 @@ def uninstall(request):
 def send_to_db(request):
     """View-функция для работы активити 'Передача объемов в БД'."""
     # Установки логирования
-    logger_send = logging.getLogger(__name__)
+    logger_send = logging.getLogger('send_to_db')
     logger_send.setLevel(logging.DEBUG)
     if not logger_send.hasHandlers():
         handler = RotatingFileHandler(
@@ -149,7 +150,7 @@ def send_to_db(request):
 def get_from_db(request):
     """View-функция для работы активити 'Получение объемов из БД'."""
     # Установки логирования
-    logger_get = logging.getLogger(__name__)
+    logger_get = logging.getLogger('get_from_db')
     logger_get.setLevel(logging.DEBUG)
     if not logger_get.hasHandlers():
         handler = RotatingFileHandler(
@@ -193,8 +194,8 @@ def get_from_db(request):
 def calculation(request):
     """View-функция для работы активити 'Расчет скидок'."""
     # Установки логирования
-    logger_calc = logging.getLogger(__name__)
-    logger_calc.setLevel(logging.DEBUG)
+    logger_calc = logging.getLogger('calculation')
+    logger_calc.setLevel(logging.INFO)
     if not logger_calc.hasHandlers():
         handler = RotatingFileHandler(
             '/home/bitrix/ext_www/skidkipril.plazma-t.ru/logs/calculation.log',
@@ -280,13 +281,7 @@ def calculation(request):
         # price_acc = decimal.Decimal(product['PRICE_ACCOUNT'])
         price_brutto = decimal.Decimal(product['PRICE_BRUTTO'])
         product_id = product['PRODUCT_ID']
-        keys_for_del = ['ID', 'OWNER_ID', 'OWNER_TYPE', 'PRODUCT_NAME',
-                        'ORIGINAL_PRODUCT_NAME', 'PRODUCT_DESCRIPTION',
-                        'PRICE_EXCLUSIVE',
-                        'PRICE_BRUTTO', 'PRICE_ACCOUNT', 'DISCOUNT_SUM',
-                        'nomenclature_group_id']
-        for key in keys_for_del:
-            del product[key]
+
         # Применяем скидки по номенклатурным группам
         if nomenclature_group_id in discounts:
             discount_rate = discounts[nomenclature_group_id]
@@ -314,19 +309,14 @@ def calculation(request):
             logger_calc.info(MESSAGES_FOR_LOG['discount_ok_product'].format(
                 product_id, discount_rate
             ))
-    logger_calc.debug('{}{}'.format(
+    logger_calc.info('{}{}'.format(
         MESSAGES_FOR_LOG['all_products_send_bp'],
         json.dumps(obj.products, indent=2, ensure_ascii=False)))
-    try:
-        obj.set_products(obj.products)
-    except RuntimeError:
-        logger_calc.error(MESSAGES_FOR_LOG['impossible_send_to_deal'])
-        logger_calc.info(MESSAGES_FOR_LOG['stop_app'])
-        response_for_bp(
-            portal, initial_data['event_token'],
-            MESSAGES_FOR_BP['impossible_send_to_deal'],
-        )
-        return HttpResponse(status=200)
+
+    update_products_deal(portal, initial_data, obj.products, logger_calc)
+
+    logger_calc.info(json.dumps(obj.products, indent=2, ensure_ascii=False))
+
     # Возвращаем результат
     response_for_bp(portal, initial_data['event_token'],
                     MESSAGES_FOR_BP['calculation_ok'])
@@ -667,3 +657,28 @@ def calculate_product_discounts(
         json.dumps(all_discounts_products, indent=2,
                    ensure_ascii=False)))
     return all_discounts_products
+
+
+def update_products_deal(
+        portal: Portals, initial_data: dict[str, str or int],
+        products: list[dict[str, any]], logger):
+    """Method for update products in deal."""
+    for product in products:
+        product_id = product.get('ID')
+        fields = {
+            'price': product.get('PRICE'),
+            'discountTypeId': product.get('DISCOUNT_TYPE_ID'),
+            'discountRate': product.get('DISCOUNT_RATE'),
+        }
+
+        try:
+            product_row = ProductRowB24(portal, product_id)
+            product_row.update(product_id, fields)
+        except RuntimeError:
+            logger.error(MESSAGES_FOR_LOG['impossible_send_to_deal'])
+            logger.info(MESSAGES_FOR_LOG['stop_app'])
+            response_for_bp(
+                portal, initial_data['event_token'],
+                MESSAGES_FOR_BP['impossible_send_to_deal'],
+            )
+            return HttpResponse(status=200)

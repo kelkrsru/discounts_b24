@@ -143,6 +143,19 @@ class ProductB24(ObjB24):
     GET_PROPS_REST_METHOD: str = 'crm.product.get'
 
 
+class ProductRowB24(ObjB24):
+    """Класс Товарной позиции."""
+    def update(self, product_id, fields):
+        """Метод изменения товарной позиции."""
+        return self._check_error(self.bx24.call(
+            'crm.item.productrow.update',
+            {
+                'id': product_id,
+                'fields': fields
+            }
+        ))
+
+
 class SmartProcessB24(ObjB24):
     """Класс Smart процесс."""
     GET_PROPS_REST_METHOD: str = 'crm.type.get'
