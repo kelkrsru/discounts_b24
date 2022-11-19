@@ -11,7 +11,7 @@ class ObjB24:
         self.bx24 = Bitrix24(portal.name)
         self.bx24._access_token = portal.auth_id
         self.id = id_obj
-        if self.GET_PROPS_REST_METHOD:
+        if self.GET_PROPS_REST_METHOD and self.id:
             self.properties = self._get_properties()
 
     def _get_properties(self):
@@ -152,6 +152,20 @@ class ProductRowB24(ObjB24):
             {
                 'id': product_id,
                 'fields': fields
+            }
+        ))
+
+
+class RequisiteB24(ObjB24):
+    """Класс Реквизитов."""
+    GET_PROPS_REST_METHOD: str = 'crm.requisite.get'
+
+    def list(self, filter):
+        """Метод поиска реквизитов."""
+        return self._check_error(self.bx24.call(
+            'crm.requisite.list',
+            {
+                'filter': filter
             }
         ))
 

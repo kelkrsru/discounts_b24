@@ -10,4 +10,6 @@ urlpatterns = [
     path('discounts_send_to_db/', views.send_to_db, name='send_to_db'),
     path('discounts_calculation/', views.calculation, name='calculation'),
     path('discounts_get_from_db/', views.get_from_db, name='get_from_db'),
+    path('check-company-inn/', views.check_company_inn,
+         name='check-company-inn'),
 ]

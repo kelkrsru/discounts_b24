@@ -1,13 +1,14 @@
 import decimal
 import json
 import logging
+from http import HTTPStatus
 from logging.handlers import RotatingFileHandler
 
 from activities.discount import (AccumulativeDiscount, InvoiceDiscount,
                                  PartnerDiscount)
 from core.bitrix24.bitrix24 import (ActivityB24, CompanyB24, DealB24,
                                     ProductB24, QuoteB24, SmartProcessB24,
-                                    ProductRowB24)
+                                    ProductRowB24, RequisiteB24)
 from core.models import Portals
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.serializers.json import DjangoJSONEncoder
@@ -187,6 +188,65 @@ def get_from_db(request):
                         return_values={'result': 'no_data'})
         return HttpResponse(status=200)
     logger_get.info(MESSAGES_FOR_LOG['stop_app'])
+    return HttpResponse(status=200)
+
+
+@csrf_exempt
+def check_company_inn(request):
+    """View-функция для работы активити 'Проверка компании по ИНН'."""
+    if request.method != 'POST':
+        return HttpResponse(status=HTTPStatus.BAD_REQUEST)
+    initial_data = {
+        'member_id': request.POST.get('auth[member_id]'),
+        'event_token': request.POST.get('event_token'),
+        'document_type': request.POST.get('document_type[2]'),
+        'company_inn': request.POST.get('properties[company_inn]'),
+    }
+    try:
+        portal: Portals = Portals.objects.get(
+            member_id=initial_data['member_id'])
+        portal.check_auth()
+    except ObjectDoesNotExist:
+        return HttpResponse(status=200)
+    try:
+        int(initial_data.get('company_inn'))
+    except ValueError:
+        response_for_bp(portal, initial_data['event_token'],
+                        'Ошибка в работе активити',
+                        return_values={
+                            'result': 'error',
+                            'errors': 'Поле company_inn содержит запрещенные '
+                                      'символы. Можно использовать только 0-9.'
+                        })
+        return HttpResponse(status=200)
+    try:
+        requisite = RequisiteB24(portal, 0)
+        filter_val = {
+            'RQ_INN': initial_data.get('company_inn')
+        }
+        result = requisite.list(filter_val)
+    except RuntimeError as ex:
+        response_for_bp(portal, initial_data['event_token'],
+                        'Ошибка в работе активити',
+                        return_values={
+                            'result': 'error',
+                            'errors': f'error: {ex.args[0]}, error '
+                                      f'description: {ex.args[1]}'
+                        })
+        return HttpResponse(status=200)
+
+    if not result:
+        response_for_bp(portal, initial_data['event_token'],
+                        'Компания с данным ИНН не найдена',
+                        return_values={'result': 'not_found'})
+        return HttpResponse(status=200)
+    response_for_bp(portal, initial_data['event_token'],
+                    'Компания с данным ИНН найдена',
+                    return_values={
+                        'result': 'found',
+                        'ids_companies': [item.get('ENTITY_ID') for item in
+                                          result]
+                    })
     return HttpResponse(status=200)
 
 
