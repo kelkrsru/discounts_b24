@@ -469,14 +469,13 @@ def create_obj_and_get_all_products(
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['products_in_deal_null'])
         return HttpResponse(status=200)
-    except RuntimeError as ex:
+    except Exception as ex:
         logger.error(MESSAGES_FOR_LOG['impossible_get_products'])
         logger.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['impossible_get_products'] + ex.args[
                             0])
         return HttpResponse(status=200)
-
 
 def create_company(portal: Portals, company_id: int,
                    initial_data: dict[str, any],
