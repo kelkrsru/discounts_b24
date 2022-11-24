@@ -497,6 +497,17 @@ def fill_nomenclatures_groups(
         func_name: str = 'calc') -> dict[int, decimal.Decimal] or HttpResponse:
     nomenclatures_groups: dict[int, decimal.Decimal] = dict()
     for product in obj.products:
+        if int(product.get("PRODUCT_ID")) == 0:
+            logger.error(
+                MESSAGES_FOR_LOG['impossible_get_product_props'].format(
+                    product['id']
+                ))
+            logger.info(MESSAGES_FOR_LOG['stop_app'])
+            response_for_bp(
+                portal, initial_data['event_token'],
+                MESSAGES_FOR_BP['impossible_get_product_props'].format(
+                    product['id']
+                ))
         try:
             prod: ProductB24 = ProductB24(portal, product["PRODUCT_ID"])
         except RuntimeError:
