@@ -498,16 +498,10 @@ def fill_nomenclatures_groups(
     nomenclatures_groups: dict[int, decimal.Decimal] = dict()
     for product in obj.products:
         if int(product.get("PRODUCT_ID")) == 0:
-            logger.error(
-                MESSAGES_FOR_LOG['impossible_get_product_props'].format(
-                    product['id']
-                ))
+            logger.error('В сделке имеются товары не из каталога')
             logger.info(MESSAGES_FOR_LOG['stop_app'])
-            response_for_bp(
-                portal, initial_data['event_token'],
-                MESSAGES_FOR_BP['impossible_get_product_props'].format(
-                    product['id']
-                ))
+            response_for_bp(portal, initial_data['event_token'],
+                            'В сделке имеются товары не из каталога')
         try:
             prod: ProductB24 = ProductB24(portal, product["PRODUCT_ID"])
         except RuntimeError:
