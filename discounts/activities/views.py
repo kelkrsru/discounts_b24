@@ -136,7 +136,8 @@ def send_to_db(request):
         logger_send.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['wrong_inn'],
-                        return_values={'result': 'wrong_inn'})
+                        return_values={'result': 'wrong_inn',
+                                       'errors': 'Ошибка в ИНН компании'})
         return HttpResponse(status=200)
 
     logger_send.info(MESSAGES_FOR_LOG['send_data_to_db_ok'])
@@ -281,6 +282,8 @@ def calculation(request):
     # Создаем компанию и получаем ее тип
     company: CompanyB24 = create_company(portal, company_id, initial_data,
                                          logger_calc)
+    if not company:
+        return HttpResponse(status=200)
     # Основной словарь скидок по номенклатуре
     discounts: dict[str, int] = dict()
     logger_calc.info(MESSAGES_FOR_LOG['stop_block'])
@@ -347,13 +350,13 @@ def calculation(request):
             discount_rate = discounts[nomenclature_group_id]
             product['DISCOUNT_RATE'] = discount_rate
             price = price_brutto * (100 - discount_rate) / 100
-            product['PRICE'] = str(price)
+            product['PRICE'] = str(round(price))
             logger_calc.info(MESSAGES_FOR_LOG['discount_ok_product'].format(
                 product_id, discount_rate
             ))
         else:
             product['DISCOUNT_RATE'] = 0
-            product['PRICE'] = str(price_brutto)
+            product['PRICE'] = str(round(price_brutto))
         # Применяем скидки на конкретный товар
         if settings_portal.is_active_discount_product:
             if product_id not in all_discounts_products:
@@ -365,7 +368,7 @@ def calculation(request):
             discount_rate = all_discounts_products[product_id]
             product['DISCOUNT_RATE'] = discount_rate
             price = price_brutto * (100 - discount_rate) / 100
-            product['PRICE'] = str(price)
+            product['PRICE'] = str(round(price))
             logger_calc.info(MESSAGES_FOR_LOG['discount_ok_product'].format(
                 product_id, discount_rate
             ))
@@ -448,6 +451,7 @@ def check_initial_data(portal: Portals, initial_data: dict[str, any],
             portal,
             initial_data['event_token'],
             '{} {}'.format(MESSAGES_FOR_BP['main_error'], ex.args[0]),
+            return_values={'errors': 'Ошибка в начальных данных'}
         )
         return HttpResponse(status=200)
 
@@ -467,28 +471,33 @@ def create_obj_and_get_all_products(
         logger.error(MESSAGES_FOR_LOG['products_in_deal_null'])
         logger.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
-                        MESSAGES_FOR_BP['products_in_deal_null'])
+                        MESSAGES_FOR_BP['products_in_deal_null'],
+                        return_values={'errors': MESSAGES_FOR_BP[
+                            'products_in_deal_null']})
         return HttpResponse(status=200)
     except Exception as ex:
         logger.error(MESSAGES_FOR_LOG['impossible_get_products'])
         logger.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['impossible_get_products'] + ex.args[
-                            0])
+                            0],
+                        return_values={'errors': MESSAGES_FOR_BP[
+                            'impossible_get_products']})
         return HttpResponse(status=200)
+
 
 def create_company(portal: Portals, company_id: int,
                    initial_data: dict[str, any],
-                   logger) -> CompanyB24 or HttpResponse:
+                   logger) -> CompanyB24 or bool:
     """Функция создания компании."""
     try:
         return CompanyB24(portal, company_id)
-    except RuntimeError:
+    except Exception:
         logger.error(MESSAGES_FOR_LOG['impossible_get_company_type'])
         logger.info(MESSAGES_FOR_LOG['stop_app'])
         response_for_bp(portal, initial_data['event_token'],
                         MESSAGES_FOR_BP['impossible_get_company_type'])
-        return HttpResponse(status=200)
+        return False
 
 
 def fill_nomenclatures_groups(
@@ -501,7 +510,9 @@ def fill_nomenclatures_groups(
             logger.error('В сделке имеются товары не из каталога')
             logger.info(MESSAGES_FOR_LOG['stop_app'])
             response_for_bp(portal, initial_data['event_token'],
-                            'В сделке имеются товары не из каталога')
+                            'В сделке имеются товары не из каталога',
+                            return_values={'errors': 'В сделке имеются товары '
+                                                     'не из каталога'})
         try:
             prod: ProductB24 = ProductB24(portal, product["PRODUCT_ID"])
         except RuntimeError:
@@ -513,8 +524,10 @@ def fill_nomenclatures_groups(
             response_for_bp(
                 portal, initial_data['event_token'],
                 MESSAGES_FOR_BP['impossible_get_product_props'].format(
-                    product['id']
-                ))
+                    product['id']),
+                return_values={'errors': MESSAGES_FOR_BP[
+                    'impossible_get_product_props'].format(product['id'])}
+            )
             return HttpResponse(status=200)
         if not prod.properties[settings_portal.code_nomenclature_group_id]:
             product['nomenclature_group_id'] = 0
